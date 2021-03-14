@@ -118,11 +118,11 @@ def crawler_ufmg_courses(periodo: str = "1-periodo"):
     pre_filter_courses = soup.find("ol", {"class": 'drop__list'}).find_all("ol",{"class":"drop__list--depth-1"})
 
     group_courses = [x for i in map(find_group_courses,pre_filter_courses) for x in i]
-    print(len(group_courses))
+    # print(len(group_courses))
     # print(type(group_courses[0]))
     # print(group_courses[0])
     courses = list(map(find_list_courses,group_courses))
-    print(len(courses))
+    # print(len(courses))
     # print(type(courses[0]))
     # print(courses[0])
     return courses
@@ -135,11 +135,11 @@ def crawler_ufmg_descriptions(link: str = ""):
     soup = BeautifulSoup(req.content, 'html.parser')
     pre_filter_courses = soup.find("ol", {"class": 'drop__list'}).find_all("ol",{"class":"drop__list--depth-2"})
     group_courses = [x for i in map(find_group_courses,pre_filter_courses) for x in i]
-    print(len(group_courses))
+    # print(len(group_courses))
     # print(type(group_courses[0]))
     # print(group_courses[0])
     courses = list(map(find_course_ementa,group_courses))
-    print(len(courses))
+    # print(len(courses))
     # print(type(courses[0]))
     # print(courses[0])
     courses_descriptions = [
@@ -151,13 +151,13 @@ def crawler_ufmg_descriptions(link: str = ""):
         ) 
         for x in courses
     ]
-    print(len(courses_descriptions))
+    # print(len(courses_descriptions))
     # print(type(courses_descriptions[0]))
     # print(courses_descriptions[0])
     return courses_descriptions
 
 
-def crawler_ufmg_description(link: str = ""):
+def crawler_ufmg_description(link:str = ""):
     url = f"https://ufmg.br{link}"
     print(url)
     req = requests.get(url)
@@ -167,13 +167,13 @@ def crawler_ufmg_description(link: str = ""):
     return filter_description
 
 
-def run_crawler(data, routine: Callable):
-    print(f'Procurados: {data}')
+def run_crawler(data:List, routine: Callable):
+    print(f'Searching for: {len(data)} datas')
     results = None
     with Pool(processes=multiprocessing.cpu_count()) as pool:
         multiple_results = [pool.apply_async(routine, (i,)) for i in data]
-        results = [i for res in multiple_results for i in res.get(timeout=1000)]
-    print(f'Final da procura')
+        results = [i for res in multiple_results for i in res.get()]
+    print(f'End of Searching')
     return results
 
 
@@ -203,7 +203,8 @@ if __name__ == "__main__":
 
     print("##### - Getting Courses Info - #####")
 
-    descriptions = run_crawler(links, crawler_ufmg_description)
+    descriptions = [crawler_ufmg_description(link) for link in links]
+    
     ufmg_courses.list = [(info_courses[i][0], info_courses[i][1], info_courses[i][2], descriptions[i]) for i in range(len(info_courses))]
     
     print("##### - Building Course Info - #####")
@@ -211,7 +212,7 @@ if __name__ == "__main__":
     df = pd.DataFrame(data=eng_sis_courses.list).set_index("course_id")
     df.append(pd.DataFrame(data=eng_sis_courses.list).set_index("course_id"))
     # print(df.head)
-    
+
     print("##### - Saving Courses Info - #####")
 
     df.to_excel("all_courses_ementas")
