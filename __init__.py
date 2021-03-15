@@ -118,13 +118,7 @@ def crawler_ufmg_courses(periodo: str = "1-periodo"):
     pre_filter_courses = soup.find("ol", {"class": 'drop__list'}).find_all("ol",{"class":"drop__list--depth-1"})
 
     group_courses = [x for i in map(find_group_courses,pre_filter_courses) for x in i]
-    # print(len(group_courses))
-    # print(type(group_courses[0]))
-    # print(group_courses[0])
     courses = list(map(find_list_courses,group_courses))
-    # print(len(courses))
-    # print(type(courses[0]))
-    # print(courses[0])
     return courses
 
 
@@ -135,13 +129,7 @@ def crawler_ufmg_descriptions(link: str = ""):
     soup = BeautifulSoup(req.content, 'html.parser')
     pre_filter_courses = soup.find("ol", {"class": 'drop__list'}).find_all("ol",{"class":"drop__list--depth-2"})
     group_courses = [x for i in map(find_group_courses,pre_filter_courses) for x in i]
-    # print(len(group_courses))
-    # print(type(group_courses[0]))
-    # print(group_courses[0])
     courses = list(map(find_course_ementa,group_courses))
-    # print(len(courses))
-    # print(type(courses[0]))
-    # print(courses[0])
     courses_descriptions = [
         (
             "",
@@ -151,9 +139,6 @@ def crawler_ufmg_descriptions(link: str = ""):
         ) 
         for x in courses
     ]
-    # print(len(courses_descriptions))
-    # print(type(courses_descriptions[0]))
-    # print(courses_descriptions[0])
     return courses_descriptions
 
 
@@ -162,10 +147,12 @@ def crawler_ufmg_description(link:str = ""):
     print(url)
     req = requests.get(url)
     soup = BeautifulSoup(req.content, 'html.parser')
-    filter_description = soup.find("article").find("p").contents[0]
-    # print(filter_description)
-    return filter_description
-
+    try:
+        filter_description = soup.find("article").find("p").contents[0]
+        return filter_description
+    except:
+        print(f"Not Found Descriptio for {link}")
+    return ""
 
 def run_crawler(data:List, routine: Callable):
     print(f'Searching for: {len(data)} datas')
@@ -176,6 +163,19 @@ def run_crawler(data:List, routine: Callable):
     print(f'End of Searching')
     return results
 
+def run_crawler1(data:List, routine: Callable):
+    print(f'Searching for: {len(data)} datas')
+    results = []
+    with ProcessPoolExecutor(max_workers=4) as executor:
+        start = time.time()
+        futures = executor.map(parse, data)
+        for result in futures:
+            results.append(result)
+        end = time.time()
+        print("Time Taken: {:.6f}s".format(end-start))
+    print(f'End of Searching')
+    return results
+
 
 if __name__ == "__main__":
     periodos = [f'{str(i)}-periodo' for i in range(1, 13)]
@@ -183,11 +183,15 @@ if __name__ == "__main__":
 
     print("##### - List System Eng. Courses - #####")
 
-    eng_sis_courses = ListCource()
-    eng_sis_courses.list = run_crawler(periodos,crawler_eng_sistemas)
-    links = []
+    system_eng_courses = ListCource()
+    system_eng_courses.list = run_crawler(periodos,crawler_eng_sistemas)
+
+    df = pd.DataFrame(data=system_eng_courses.list).set_index("course_id")
+    df.to_csv("system_eng.csv")
+    
     print("##### - List UFMG Courses - #####")
 
+    links = []
     all_courses = crawler_ufmg_courses()
     
     for course in all_courses:
@@ -199,22 +203,42 @@ if __name__ == "__main__":
 
     ufmg_courses = ListCource()
     info_courses = run_crawler(links, crawler_ufmg_descriptions)
+    ufmg_courses.list = info_courses
+    df = pd.DataFrame(data=ufmg_courses.list).set_index("course_id")
+    df.to_csv("ufmg_courses_links.csv")
     links = [x[3] for x in  info_courses]
 
     print("##### - Getting Courses Info - #####")
-
-    descriptions = [crawler_ufmg_description(link) for link in links]
+    all_courses_descriptions = ListCource()
+    n = 100
+    chunks = [links[i:i+n] for i in range(0,len(chunks),n)]
+    index = 0
+    try:
+        for chunk in chunks:
+            size = len(chunk)
+            start, stop = index * size, (index + 1) * size - 1
+            partial_descriptions = ListCource()
+            descriptions = run_crawler(chunk,crawler_ufmg_description)
+            intermedium = [(
+                info_courses[i+start][0], 
+                info_courses[i+start][1], 
+                info_courses[i+start][2], 
+                descriptions[i]) 
+                for i in range(size)]
+            partial_descriptions.list = intermedium
+            all_courses_descriptions.list = intermedium
+            print(f"Writing chunk: {index}")
+            df = pd.DataFrame(data=partial_descriptions.list).set_index("course_id")
+            df.to_csv("ufmg_courses_complete.csv",mode=a)
+            print(f"End Writing")
+            index += 1
+        except Exception as ex:
+            print(f"Fail at Index: {index}; {start},{stop}")
+            print(ex)
     
-    ufmg_courses.list = [(info_courses[i][0], info_courses[i][1], info_courses[i][2], descriptions[i]) for i in range(len(info_courses))]
-    
-    print("##### - Building Course Info - #####")
-    
-    df = pd.DataFrame(data=eng_sis_courses.list).set_index("course_id")
-    df.append(pd.DataFrame(data=eng_sis_courses.list).set_index("course_id"))
-    # print(df.head)
-
     print("##### - Saving Courses Info - #####")
+    df = pd.DataFrame(data=partial_descriptions.list).set_index("course_id")
+    df.to_csv("all_courses_descriptions.csv")
 
-    df.to_excel("all_courses_ementas")
-    print(df.head)
+    
 
