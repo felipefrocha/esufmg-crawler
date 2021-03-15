@@ -12,6 +12,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from concurrent.futures import ProcessPoolExecutor,ThreadPoolExecutor
 
 
 class ListCource():
@@ -148,7 +149,8 @@ def crawler_ufmg_description(link:str = ""):
     req = requests.get(url)
     soup = BeautifulSoup(req.content, 'html.parser')
     try:
-        filter_description = soup.find("article").find("p").contents[0]
+        filter_paragraph = soup.find_all("p")
+        filter_description = filter_paragraph[0].contents[0] if filter_paragraph else soup
         return filter_description
     except:
         print(f"Not Found Descriptio for {link}")
@@ -166,9 +168,9 @@ def run_crawler(data:List, routine: Callable):
 def run_crawler1(data:List, routine: Callable):
     print(f'Searching for: {len(data)} datas')
     results = []
-    with ProcessPoolExecutor(max_workers=4) as executor:
+    with ThreadPoolExecutor(max_workers=4) as executor:
         start = time.time()
-        futures = executor.map(parse, data)
+        futures = executor.map(routine, data)
         for result in futures:
             results.append(result)
         end = time.time()
@@ -210,15 +212,15 @@ if __name__ == "__main__":
 
     print("##### - Getting Courses Info - #####")
     all_courses_descriptions = ListCource()
-    n = 100
-    chunks = [links[i:i+n] for i in range(0,len(chunks),n)]
+    n = 10
+    chunks = [links[i:i+n] for i in range(0,len(links),n)]
     index = 0
     try:
         for chunk in chunks:
             size = len(chunk)
             start, stop = index * size, (index + 1) * size - 1
             partial_descriptions = ListCource()
-            descriptions = run_crawler(chunk,crawler_ufmg_description)
+            descriptions = run_crawler1(chunk,crawler_ufmg_description)
             intermedium = [(
                 info_courses[i+start][0], 
                 info_courses[i+start][1], 
@@ -229,16 +231,18 @@ if __name__ == "__main__":
             all_courses_descriptions.list = intermedium
             print(f"Writing chunk: {index}")
             df = pd.DataFrame(data=partial_descriptions.list).set_index("course_id")
-            df.to_csv("ufmg_courses_complete.csv",mode=a)
+            df.to_csv("ufmg_courses_complete.csv",mode='a')
             print(f"End Writing")
             index += 1
-        except Exception as ex:
-            print(f"Fail at Index: {index}; {start},{stop}")
-            print(ex)
+    except Exception as ex:
+        print(f"Fail at Index: {index}; {start},{stop}")
+        print(ex)
+        exit(1)
     
     print("##### - Saving Courses Info - #####")
     df = pd.DataFrame(data=partial_descriptions.list).set_index("course_id")
     df.to_csv("all_courses_descriptions.csv")
+    exit(0)
 
     
 
